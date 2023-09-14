@@ -1,0 +1,213 @@
+---
+title: "Regression Analysis of Division 1 Women's Volleyball"
+author: "Ben Ellingworth"
+date: "9/22/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(knitr)
+library(tidyr)
+library(dplyr)
+library(kableExtra)
+library(cowplot)
+library(float)
+```
+
+```{r, warning=FALSE, include=FALSE}
+#Reading in the all of the separate data files
+aces = read_csv("VB_aces-1.csv", show_col_types = FALSE)
+acesDF = data.frame(aces)
+assists = read_csv("VB_assists-1.csv", show_col_types = FALSE)
+assistsDF = data.frame(assists)
+blocks = read_csv("VB_blocks-1.csv", show_col_types = FALSE)
+blocksDF = data.frame(blocks)
+digs = read_csv("VB_digs-1.csv", show_col_types = FALSE)
+digsDF = data.frame(digs)
+hitPerc = read_csv("VB_hit_perc-1.csv", show_col_types = FALSE)
+hitPercDF = data.frame(hitPerc)
+kills = read_csv("VB_kills-1.csv", show_col_types = FALSE)
+killsDF = data.frame(kills)
+oppHits = read_csv("VB_opp_hits-1.csv", show_col_types = FALSE)
+oppHitsDF = data.frame(oppHits)
+WorL = read_csv("VB_WL_perc-1.csv", show_col_types = FALSE)
+WorLDF = data.frame(WorL)
+
+#Joining the data sets together
+VBDF <- acesDF %>% right_join(assistsDF, by = "Team")%>% right_join(blocksDF, by = "Team")%>% right_join(digsDF, by = "Team") %>% right_join(hitPercDF, by = "Team")%>% right_join(killsDF, by = "Team") %>% right_join(oppHitsDF, by = "Team") %>% right_join(WorLDF, by = "Team")
+
+# Updating the names of the data frames and selecting important variables.
+TidyVB <- VBDF %>% select("Team","Sets" = "S.x", "Aces", "Assists","Block Solos" = "Block.Solos","BlockAssists" = "Block.Assists","TotalBlocks" = "TB", "Digs", "Kills" = "Kills.y","Errors","TotalAttacks" = "Total.Attacks", "OpponentKills" = "Opp.Kills", "OpponentErrors" = "Opp.Errors", "OpponentAttacks" = "Opp.Attacks", "Wins" = "W", "Losses" = "L")
+
+```
+```{r, include=FALSE}
+# Creating the Tidy Data set and adding in the per set stats so teams who have played more games are even with the other teams and don't have more weight. 
+FinalTidyVB <- TidyVB[-c(336:341, 16, 22,51,76,95,96,148,165,243,308) ,] %>% mutate("WinPct" = Wins/(Wins + Losses), "HitPCT" = ((Kills - Errors)/TotalAttacks), "AcesPerSet" = Aces/Sets, "AssistsPerSet" = Assists/Sets, "DigsPerSet" = Digs/Sets, "KillsPerSet" = Kills/Sets, "TBPerSet" = TotalBlocks/Sets)
+FinalTidyVB
+
+#Finding summary statistics for the intro of the research paper. Each stat is rounded to 2 decimal places. 
+avg = round(mean(FinalTidyVB$WinPct),digits = 2)
+sd = round(sd(FinalTidyVB$WinPct),digits = 2)
+avgSet = round(mean(FinalTidyVB$Sets), digits = 2)
+sdSet = round(sd(FinalTidyVB$Sets),digits = 2)
+var = c("Win PCT", "Sets")
+
+#Creating introduction table that will make the final report. 
+introDF = data.frame("Variable" = var,  "Mean" = c(avg, avgSet), "Standard Deviation" = c(sd,sdSet), check.names = FALSE)
+
+introTable = kbl(introDF, caption = "Summary Statistics for Win PCT and Sets of D1 Volleyball Teams") %>% kable_classic()
+introTable
+```
+
+```{r,include=FALSE}
+#Creating Linear Model for each variable. Each summary was looked at to find the most predictive single variable stat that led to a greater increase in win percentage. I used the summary and confint functions to get the information used in the table for the results. 
+HitPCTMod = lm(WinPct~HitPCT, data = FinalTidyVB)
+
+AcePSMod = lm(WinPct~AcesPerSet, data = FinalTidyVB)
+
+AssistsPSMod = lm(WinPct~AssistsPerSet, data = FinalTidyVB)
+
+DigsPSMod = lm(WinPct~DigsPerSet, data = FinalTidyVB)
+
+KillsPSMod = lm(WinPct~KillsPerSet, data = FinalTidyVB)
+
+TotBPSMod = lm(WinPct~TBPerSet, data = FinalTidyVB)
+
+```
+
+```{r, message=FALSE, include=FALSE}
+#Plotting results and Diagnostic plots
+VBplot = ggplot(aes(x = HitPCT, y = WinPct), data = FinalTidyVB) + geom_point() + geom_smooth(method = "lm", se = FALSE) + ylab("Win Percentage") + xlab("Hit Percentage") + ggtitle("Plot 1: Simple Regression Plot")
+VBplot
+
+par(mfrow= c(2,2))
+plot(HitPCTMod)
+
+
+```
+
+
+
+```{r,include=FALSE}
+# Storing all of the summary results from the linear model tests above to compare which is the most predictive. 
+a = c("Hit PCT","Aces Per Set", "Assists Per Set","Total Blocks Per Set" , "Digs Per Set", "Kills Per Set")
+rSqr = c(.66,.16,.53,.28,.09,.56)
+lb = c(3.50, 0.22, .12, .24, .03, .12)
+ub = c(4.10, .37, .15, .34, .06, .14)
+slope = round(c(3.79495004,0.29,    0.13, 0.29, .04, 0.13),digits = 2)
+
+
+LinModResults = data.frame('Variable' = a, "R-Squared" = rSqr, "95 CI Slope Lower Bound" = (lb),"Regression Coeffecient" = slope, "95 CI Slope Upper Bound" = ub, check.names = FALSE)
+
+#Ordering Results from greatest R-Squared to least R-Squared.
+final = LinModResults[order(-rSqr),]
+final
+
+
+#Converting to a table. 
+singleRegTable = kbl(final, caption = "Single Variable Regression Results") %>%
+    kable_classic() %>% footnote(general = "CI = Confidence Interval")
+singleRegTable
+```
+
+```{r, include=FALSE}
+#Creating a forest Plot for single linear regression. 
+slope_vector = c(coefficients(HitPCTMod)[2],coefficients(KillsPSMod)[2],coefficients(AssistsPSMod)[2],coefficients(TotBPSMod)[2],coefficients(AcePSMod)[2],coefficients(DigsPSMod)[2])
+slope_vector
+slope = round(c(3.79495004,0.29,    0.13, 0.29, .04, 0.13),digits = 2)
+
+#Each Model
+mod = c("HitPCT", "Kills Per Set", "Assists Per Set", "TB Per Set","Aces Per Set", "Digs Per Set")
+
+#Lower and uper bounds
+forPlotlb = c(3.5, .12,.12,.24,.22,.03 )
+forPlotub = c(4.1, .14,.15, .34,.37,.06)
+
+forestPlotDF = data.frame(slope_vector, forPlotlb, forPlotub)
+forestPlotDF
+
+#The Forest Plot
+forestPlot = ggplot(data = forestPlotDF, aes(y = slope_vector, ymin=forPlotlb,ymax = forPlotub, x =mod )) +
+  geom_pointrange()+
+  geom_hline(yintercept = 0, lty=2) + coord_flip() + ylab("Regression Coefficient") + xlab("Model") +
+  ggtitle("Figure 1: Forest Plot For Each Univariate Linear Regression Model")
+forestPlot
+```
+
+
+```{r, include=FALSE}
+# Fitting multiple variable regression models to see if any 2 factors help better represent winning.Used Summary function to get info used in table in results. 
+
+oppLM = lm(WinPct~HitPCT + ((OpponentKills - OpponentErrors)/OpponentAttacks), data = FinalTidyVB)
+
+kLM = lm(WinPct~KillsPerSet + AssistsPerSet, data = FinalTidyVB)
+
+
+fLM = lm(WinPct~DigsPerSet + TBPerSet, data = FinalTidyVB)
+
+aceLM = lm(WinPct~AcesPerSet + ((OpponentKills - OpponentErrors)/OpponentAttacks), data = FinalTidyVB)
+summary(aceLM)
+
+```
+
+
+
+```{r, include = FALSE}
+## Creating a table for the results of the multiple regression model. 
+
+names  = c("Hit PCT and Opponent Hit PCT", "Kills Per Set and Assists Per Set", "Aces Per Set and Opponent Hit PCT", "Total Blocks Per Set and Digs Per Set")
+
+adjRsqr = c(0.76, 0.56, .41, .36)
+
+dubFinal = data.frame('Variables' = names, "Adjusted R-Squared" = adjRsqr,  check.names = FALSE)
+
+#Final Table
+dubVarTable = kbl(dubFinal, caption = "Multiple Variable Regression Results") %>%
+    kable_classic()
+
+#Here is where the paper starts 
+```
+
+## Introduction
+|   This paper explores the best team statistics for Division 1 Women's Volleyball to help predict a teams Win% (Win Percentage). Statistics from 325 D1 Volleyball teams were used in this study and tested to help find the best predictor. Five teams were removed from the study due to missing team statistics. Each stat was tested and compared to each other using a variety of methods. The study started with univariate regression models and also explored regression models involving two or more team statistics. The average Win% of the teams was .51 with a standard deviation of .24. The average amounts of sets for each team was 42.33 with a standard deviation of 6.38.
+
+```{r, echo = FALSE}
+introTable %>% kable_styling(latex_options = "hold_position")
+```
+
+## Methods
+|       R version 4.1.2 was used in this project. Data was collected and read onto R from the official NCAA Website. The data was updated as of Thursday, September 22.  
+|       To try and find the best predictor for win success, simple linear regression was used to help compare each variable. Each model was plotted with diagnostic plots, as well as scatter plots with a linear regression line. This helped provide a visual to check for correlation and also allowed to check for problems with each model. Transformation of both axes were considered but deemed unnecessary. During all of these tests, the response variable was Win%. However, in testing to see the variable that is the "best" predictor, the explanatory variable switched. Due to each team having a different number of games, each explanatory variable was divided by the number of sets the team has played to allow for equal representation. The explanatory variables that were used in this study include: Aces Per Set, Assists Per Set, Total Blocks Per Set, Digs Per Set, Kills Per Set, and Hit% (Hit Percentage = ((Kills - Errors)/Total Attacks)). 
+|      After testing each explanatory variable mentioned above, the coefficients of determination were stored in a table with the respective variable. 95% confidence intervals for the slope of the regressions were also collected. Intervals were stored in the same table as the coefficients of determination. A significance level of .05 was used for all hypothesis testing. Lastly, forest plots for each variable were created using each models regression coefficient and 95% confidence interval upper and lower bounds. 
+|       A similar process was used for multiple regression. The response variable stayed the same as Win%, but the explanatory variables used included: Hit% and Opponent Hit%, Kills Per Set and Assists Per Set, Total Blocks Per Set and Digs Per Set, and Aces Per Set with Opponent Hit%. Each of the variables were all fit into multiple regression models and Adjusted R-Squared was stored to determine how predictive the variables are. Adjusted R-Squared was used due to the error for complexity it takes into account.
+
+## Results
+|       The best single variable predictor for winning in Division 1 Women's Volleyball is Hit%. As seen in Table 2 below, the R-Squared for Hit% was 0.66. This value is the largest out of all the different variables. The regression coefficient of 3.79 proves to be the largest rate of change between all models. This shows that there exists a correlation between Win% and Hit%. Plot 1 also shows a clear trend exists. The higher a teams Hit% is, the higher we can expect their Win% to be. 
+|       The confidence intervals for all the different variables are shown in Table 2. As seen in the table, we can say with 95% confidence, we expect an increase in Win% between (3.5,4.1) for each 1 unit increase of Hit%. The p value for the Hit% model was found to be <.001 which is well below the significance value of .05. This shows that there is a relationship between a team's Win% and Hit%.
+
+```{r, echo=FALSE, message=FALSE}
+singleRegTable %>% kable_styling(latex_options = "hold_position")
+```
+
+```{r, echo=FALSE, message=FALSE}
+VBplot
+```
+
+|       When working with real world data, not every aspect can fit perfectly into a linear model. Diagnostic plots were taken for the purpose to try and point out errors with each model. Roughly two high leverage points were found when using Hit% as the explanatory variable. This helps highlight that the results are meaningful and can be very useful, but still have limitations. 
+|       Figure 1 shows the forest plot that includes each simple linear model used. This plot is useful to show that the Hit% regression coefficient and interval are well above the other models. As a result, we can conclude that there is a greater rate of change involving Hit% than other models. This illustrates the importance of Hit% when trying to predict Win%.
+
+
+
+```{r, echo=FALSE}
+forestPlot
+```
+
+|       Using multiple regression which accounts for multiple variables, the most predictive team stats together were a team's Hit% and their Opponents Hit%. So, while it is very important to focus on increasing a team's Hit%, it is also important to try and limit the opponents. As seen below in Table 3, the Adjusted R-Squared for the model incorporating both Hit%'s is 0.76. This is an increase from the singe variable regression and well above all other combinations tested. 
+
+
+```{r, echo=FALSE}
+dubVarTable %>% kable_styling(latex_options = "hold_position")
+```
+
